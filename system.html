@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>System Crash</title>
+<link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/GLITCHED-OVERRIDE/System-Crash/refs/heads/main/favicon.ico">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+<style>
+  :root{--accent:#ff3030;--bg:#000;--panel:#0a0a0a;--card:#111;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto; background:var(--bg); color:#fff; height:100vh; display:flex; overflow:hidden}
+
+  /* Sidebar */
+  .sidebar{width:200px;background:var(--panel);padding:18px;display:flex;flex-direction:column;gap:12px;border-right:1px solid #111}
+  .sidebar a{color:#ddd;text-decoration:none;padding:10px;border-radius:6px;display:block;cursor:pointer}
+  .sidebar a.active{color:var(--accent);font-weight:700;background:rgba(255,48,48,0.06)}
+
+  /* Topbar */
+  .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .topbar{height:56px;background:var(--panel);display:flex;align-items:center;padding:0 18px;border-bottom:1px solid #111;gap:12px}
+  .tab{padding:8px 12px;cursor:pointer;border-radius:6px;color:#ddd}
+  .tab.active{color:var(--accent);border-bottom:2px solid var(--accent);font-weight:600}
+
+  /* Content */
+  .content{flex:1;overflow:auto;padding:18px}
+  .section-title{color:var(--accent);font-size:1.1rem;margin:14px 0 8px;border-left:4px solid var(--accent);padding-left:10px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+  .card, .movie{background:var(--card);border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .15s,box-shadow .15s}
+  .card:hover, .movie:hover{transform:translateY(-4px);box-shadow:0 8px 22px rgba(255,48,48,0.08)}
+  .card img, .movie img{width:100%;height:160px;object-fit:cover;background:#000}
+  .card h3{font-size:0.95rem;padding:10px;text-align:center}
+
+  /* movie rows */
+  .movie-row{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px}
+  .movie{min-width:170px;flex:0 0 auto}
+  .movie .info{padding:8px;text-align:center}
+  .rating{color:var(--accent);font-weight:700}
+
+  /* search */
+  .search-row{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+  .search-row input{background:var(--card);border:1px solid #222;padding:10px;border-radius:8px;color:#fff;min-width:260px}
+  .count{color:#bbb;font-size:.95rem}
+
+  /* overlay */
+  #movieOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:9999;padding:28px;overflow:auto}
+  #movieOverlay.show{display:block}
+  .overlay-card{max-width:1000px;margin:40px auto;background:var(--card);padding:18px;border-radius:10px;display:flex;gap:18px;flex-wrap:wrap}
+  .overlay-card img{width:300px;height:450px;object-fit:cover;border-radius:8px}
+  .overlay-meta{flex:1;color:#fff}
+  .overlay-meta h2{color:var(--accent);margin-bottom:8px}
+  .btn{background:var(--accent);border:none;padding:10px 14px;border-radius:8px;color:#fff;cursor:pointer;margin-top:12px}
+  .close-x{position:absolute;right:28px;top:18px;font-size:26px;cursor:pointer}
+  .muted{color:#aaa;font-size:.95rem}
+
+  .movie-row::-webkit-scrollbar{height:9px}
+  .movie-row::-webkit-scrollbar-thumb{background:#2b2b2b;border-radius:6px}
+</style>
+</head>
+<body>
+
+<!-- INTRO SCREEN -->
+<div id="introScreen" style="
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+">
+  <img src="https://raw.githubusercontent.com/NOTAHACKER9999/Hypper-Drive/refs/heads/main/Intro.gif"
+       style="width: 100%; height: 100%; object-fit: contain;">
+</div>
+
+<div class="sidebar">
+  <a id="dashboardBtn" class="active">Dashboard</a>
+  <a id="libraryBtn">Library</a>
+</div>
+
+<div class="main">
+  <div class="topbar" id="libraryTopbar" style="display:none">
+    <div id="gamesTab" class="tab active">Games</div>
+    <div id="moviesTab" class="tab">Movies</div>
+  </div>
+
+  <div class="content" id="contentArea"></div>
+</div>
+
+<!-- MOVIE OVERLAY -->
+<div id="movieOverlay" aria-hidden="true">
+  <div class="close-x" id="closeOverlay">&times;</div>
+  <div class="overlay-card">
+    <img id="ovPoster" src="">
+    <div class="overlay-meta">
+      <h2 id="ovTitle"></h2>
+      <div class="muted">Rating: <span id="ovRating"></span> · Release: <span id="ovRelease"></span></div>
+      <div id="ovGenres" class="muted"></div>
+      <p id="ovOverview" style="margin-top:12px"></p>
+      <button id="ovPlay" class="btn">Play</button>
+      <iframe id="ovPlayer" style="width:100%;height:420px;border:0;margin-top:14px;display:none" allowfullscreen></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+const GAMES_JSON = "https://raw.githubusercontent.com/NOTAHACKER9999/Hypper-Drive/refs/heads/main/Games/zones.json";
+const TMDB_KEY = "0e33c92186263620ce8c7f6b8fb35b00";
+const TMDB_BASE = "https://api.themoviedb.org/3";
+const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
+const FALLBACK = "https://dummyimage.com/300x450/111/ff0000&text=No+Image";
+
+let allGames = [];
+let recentGames = JSON.parse(localStorage.getItem("recentGames")||"[]");
+let recentMovies = JSON.parse(localStorage.getItem("recentMovies")||"[]");
+let popularMovies=[], topMovies=[], upcomingMovies=[];
+
+/* DOM */
+const dashboardBtn=document.getElementById("dashboardBtn");
+const libraryBtn=document.getElementById("libraryBtn");
+const libraryTopbar=document.getElementById("libraryTopbar");
+const contentArea=document.getElementById("contentArea");
+const gamesTab=document.getElementById("gamesTab");
+const moviesTab=document.getElementById("moviesTab");
+
+/* Movie overlay DOM */
+const movieOverlay=document.getElementById("movieOverlay");
+const closeOverlay=document.getElementById("closeOverlay");
+const ovPoster=document.getElementById("ovPoster");
+const ovTitle=document.getElementById("ovTitle");
+const ovRating=document.getElementById("ovRating");
+const ovRelease=document.getElementById("ovRelease");
+const ovGenres=document.getElementById("ovGenres");
+const ovOverview=document.getElementById("ovOverview");
+const ovPlay=document.getElementById("ovPlay");
+const ovPlayer=document.getElementById("ovPlayer");
+
+/* HELPERS */
+function saveRecents(){
+  localStorage.setItem("recentGames", JSON.stringify(recentGames));
+  localStorage.setItem("recentMovies", JSON.stringify(recentMovies));
+}
+function addRecentGame(g){
+  recentGames=[g,...recentGames.filter(x=>x.url!==g.url)].slice(0,10);
+  saveRecents();
+}
+function addRecentMovie(m){
+  recentMovies=[m,...recentMovies.filter(x=>x.id!==m.id)].slice(0,10);
+  saveRecents();
+}
+function el(t,p={},...kids){
+  const e=document.createElement(t);
+  Object.assign(e,p);
+  kids.forEach(k=>typeof k==="string"?e.appendChild(document.createTextNode(k)):k&&e.appendChild(k));
+  return e;
+}
+
+/* DASHBOARD */
+function renderDashboard(){
+  libraryTopbar.style.display="none";
+  dashboardBtn.classList.add("active");
+  libraryBtn.classList.remove("active");
+  contentArea.innerHTML="";
+
+  contentArea.appendChild(el('h1',{},'System Crash — Dashboard -DONT GIVE THE SITE OUT'));
+
+  /* Recent games */
+  contentArea.appendChild(el('div',{className:'section-title'},'Recent Games'));
+  const gGrid=el('div',{className:'grid'});
+  if(recentGames.length===0) gGrid.appendChild(el('div',{className:'muted'},'No recent games'));
+  recentGames.forEach(g=>{
+    const card=el('div',{className:'card',onclick:()=>openGame(g)});
+    card.appendChild(el('img',{src:g.cover||FALLBACK}));
+    card.appendChild(el('h3',{},g.name));
+    gGrid.appendChild(card);
+  });
+  contentArea.appendChild(gGrid);
+
+  /* Recent movies */
+  contentArea.appendChild(el('div',{className:'section-title'},'Recent Movies'));
+  const mGrid=el('div',{className:'grid'});
+  if(recentMovies.length===0) mGrid.appendChild(el('div',{className:'muted'},'No recent movies'));
+  recentMovies.forEach(m=>{
+    const card=el('div',{className:'card',onclick:()=>showMovie(m.id)});
+    card.appendChild(el('img',{src:m.poster}));
+    card.appendChild(el('h3',{},m.title));
+    mGrid.appendChild(card);
+  });
+  contentArea.appendChild(mGrid);
+}
+
+/* LIBRARY */
+async function renderGamesLibrary(){
+  libraryTopbar.style.display="flex";
+  gamesTab.classList.add("active"); moviesTab.classList.remove("active");
+  contentArea.innerHTML="";
+
+  const searchRow=el('div',{className:'search-row'});
+  const input=el('input',{placeholder:'Search games...',oninput:filterGames,id:'gamesSearch'});
+  const count=el('div',{className:'count',id:'gamesCount'});
+  searchRow.appendChild(input); searchRow.appendChild(count);
+  contentArea.appendChild(searchRow);
+
+  const grid=el('div',{className:'grid',id:'gamesGrid'});
+  contentArea.appendChild(grid);
+
+  if(allGames.length===0){
+    try{
+      const r=await fetch(GAMES_JSON);
+      const raw=await r.json();
+      allGames = raw.map(g=>({name:g.name, cover:g.cover, url:g.url}));
+    }catch(e){
+      grid.appendChild(el('div',{className:'muted'},'Failed to load games'));
+    }
+  }
+
+  filterGames();
+  function filterGames(){
+    const q=document.getElementById('gamesSearch').value.toLowerCase();
+    const filtered=allGames.filter(g=>g.name.toLowerCase().includes(q));
+    const gGrid=document.getElementById('gamesGrid');
+    gGrid.innerHTML="";
+    filtered.forEach(g=>{
+      const c=el('div',{className:'card',onclick:()=>openGame(g)});
+      c.appendChild(el('img',{src:g.cover||FALLBACK}));
+      c.appendChild(el('h3',{},g.name));
+      gGrid.appendChild(c);
+    });
+    count.textContent=`${filtered.length} Games Found`;
+  }
+}
+
+async function renderMoviesLibrary(){
+  libraryTopbar.style.display="flex";
+  moviesTab.classList.add("active"); gamesTab.classList.remove("active");
+  contentArea.innerHTML="";
+
+  const searchRow=el('div',{className:'search-row'});
+  const input=el('input',{placeholder:'Search movies (Enter)...',id:'moviesSearch'});
+  input.addEventListener("keydown",e=>{if(e.key==="Enter") searchMovies(input.value.trim());});
+  searchRow.appendChild(input);
+  contentArea.appendChild(searchRow);
+
+  contentArea.appendChild(el('div',{className:'section-title'},'Popular Movies'));
+  const pop=el('div',{className:'movie-row',id:'popularRow'});
+  contentArea.appendChild(pop);
+
+  contentArea.appendChild(el('div',{className:'section-title'},'Top Rated'));
+  const top=el('div',{className:'movie-row',id:'topRow'});
+  contentArea.appendChild(top);
+
+  contentArea.appendChild(el('div',{className:'section-title'},'Upcoming'));
+  const up=el('div',{className:'movie-row',id:'upRow'});
+  contentArea.appendChild(up);
+
+  if(popularMovies.length===0){
+    try{
+      const [p,t,u] = await Promise.all([
+        fetch(`${TMDB_BASE}/movie/popular?api_key=${TMDB_KEY}`).then(r=>r.json()),
+        fetch(`${TMDB_BASE}/movie/top_rated?api_key=${TMDB_KEY}`).then(r=>r.json()),
+        fetch(`${TMDB_BASE}/movie/upcoming?api_key=${TMDB_KEY}`).then(r=>r.json())
+      ]);
+      popularMovies=p.results; topMovies=t.results; upcomingMovies=u.results;
+    }catch(err){}
+  }
+
+  render(popularMovies,pop);
+  render(topMovies,top);
+  render(upcomingMovies,up);
+
+  function render(list,row){
+    row.innerHTML="";
+    list.forEach(m=>{
+      const c=el('div',{className:'movie',onclick:()=>showMovie(m.id)});
+      c.appendChild(el('img',{src:m.poster_path?TMDB_IMG+m.poster_path:FALLBACK}));
+      c.appendChild(el('div',{className:'info'},m.title));
+      row.appendChild(c);
+    });
+  }
+}
+
+async function searchMovies(q){
+  if(!q) return renderMoviesLibrary();
+  const res=await fetch(`${TMDB_BASE}/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(q)}`);
+  const data=await res.json();
+  const row=document.getElementById("popularRow");
+  row.innerHTML="";
+  (data.results||[]).forEach(m=>{
+    const c=el('div',{className:'movie',onclick:()=>showMovie(m.id)});
+    c.appendChild(el('img',{src:m.poster_path?TMDB_IMG+m.poster_path:FALLBACK}));
+    c.appendChild(el('div',{className:'info'},m.title));
+    row.appendChild(c);
+  });
+  document.getElementById("topRow").innerHTML="";
+  document.getElementById("upRow").innerHTML="";
+}
+
+/* UPDATED openGame() WITH INTRO */
+async function openGame(game){
+  if(!game.url){ 
+    alert("No game URL"); 
+    return; 
+  }
+
+  addRecentGame(game);
+
+  // Show intro
+  const intro = document.getElementById("introScreen");
+  intro.style.display = "flex";
+
+  // Wait 4 seconds, then load game
+  setTimeout(async () => {
+    try{
+      const r = await fetch(game.url);
+      const html = await r.text();
+      document.open();
+      document.write(html);
+      document.close();
+    }catch(e){
+      alert("Failed to load game");
+    }
+  }, 4000);
+}
+
+async function showMovie(id){
+  const res=await fetch(`${TMDB_BASE}/movie/${id}?api_key=${TMDB_KEY}`);
+  const d=await res.json();
+
+  ovPoster.src=d.poster_path?TMDB_IMG+d.poster_path:FALLBACK;
+  ovTitle.textContent=d.title;
+  ovRating.textContent=d.vote_average.toFixed(1);
+  ovRelease.textContent=d.release_date;
+  ovGenres.textContent=d.genres.map(g=>g.name).join(", ");
+  ovOverview.textContent=d.overview;
+
+  movieOverlay.classList.add("show");
+
+  ovPlay.onclick=()=>{ ovPlayer.src=`https://player.videasy.net/movie/${id}?color=FF0000`; ovPlayer.style.display="block"; };
+
+  addRecentMovie({id:d.id,title:d.title,poster:TMDB_IMG+d.poster_path});
+}
+
+closeOverlay.onclick=()=>{ movieOverlay.classList.remove("show"); ovPlayer.src=""; ovPlayer.style.display="none"; };
+
+dashboardBtn.onclick=()=>renderDashboard();
+libraryBtn.onclick=()=>renderGamesLibrary();
+gamesTab.onclick=()=>renderGamesLibrary();
+moviesTab.onclick=()=>renderMoviesLibrary();
+
+renderDashboard();
+</script>
+</body>
+</html>
